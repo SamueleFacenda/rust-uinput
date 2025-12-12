@@ -1,10 +1,11 @@
 use std::path::Path;
 use std::{mem, slice};
 use std::ffi::CString;
-use libc::c_int;
+use libc::{c_int, uinput_abs_setup};
 use nix::{self, fcntl, unistd};
 use nix::errno::Errno;
 use nix::sys::stat;
+use nix::ioctl_write_ptr;
 use ffi::*;
 use {Result as Res, Error, Device, Event};
 use event::{self, Kind, Code};
@@ -18,6 +19,8 @@ pub struct Builder {
 	def: uinput_user_dev,
 	abs: Option<c_int>,
 }
+
+ioctl_write_ptr!(ui_abs_setup_ioctl, b'U', 3, uinput_abs_setup);
 
 impl Builder {
 	/// Create a builder from the specified path.
@@ -253,6 +256,26 @@ impl Builder {
 	pub fn flat(mut self, value: i32) -> Self {
 		self.def.absflat[self.abs.unwrap() as usize] = value;
 		self
+	}
+
+	/// Set the resolution for the previously enabled absolute event via ioctl.
+	pub fn resolution_ioctl(mut self, value: i32) -> Res<Self> {
+		let code = self.abs.expect("absolute event not set") as usize;
+
+		let mut setup: uinput_abs_setup = unsafe { mem::zeroed() };
+		setup.code = code as u16;
+		setup.absinfo.minimum = self.def.absmin[code];
+		setup.absinfo.maximum = self.def.absmax[code];
+		setup.absinfo.fuzz = self.def.absfuzz[code];
+		setup.absinfo.flat = self.def.absflat[code];
+		setup.absinfo.resolution = value;
+
+		unsafe {
+			try!(Errno::result(ui_abs_setup_ioctl(self.fd, &setup)));
+		}
+
+		self.def.absres[code] = value;
+		Ok(self)
 	}
 
 	/// Create the defined device.
