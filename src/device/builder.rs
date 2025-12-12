@@ -255,6 +255,12 @@ impl Builder {
 		self
 	}
 
+	/// Set the resolution value for the previously enabled absolute event.
+	pub fn res(mut self, value: i32) -> Self {
+		self.def.absres[self.abs.unwrap() as usize] = value;
+		self
+	}
+
 	/// Create the defined device.
 	pub fn create(self) -> Res<Device> {
 		unsafe {
